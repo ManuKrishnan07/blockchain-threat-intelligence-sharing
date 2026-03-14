@@ -75,10 +75,7 @@ jobs:
           cd hardhat
           npm install
 
-      - name: Copy contract to hardhat
-        run: |
-          mkdir -p hardhat/contracts
-          cp smart_contract/ThreatIntelRegistry.sol hardhat/contracts/
+    
 
       - name: Compile contract
         run: |
