@@ -1,0 +1,17 @@
+{
+    "name": "threat-intel-smart-contract",
+    "version": "1.0.0",
+    "description": "ThreatIntelRegistry — Solidity smart contract",
+    "scripts": {
+      "compile":          "hardhat compile",
+      "node":             "hardhat node",
+      "deploy:localhost": "hardhat run scripts/deploy.js --network localhost",
+      "deploy:ganache":   "hardhat run scripts/deploy.js --network ganache",
+      "test":             "hardhat test"
+    },
+    "devDependencies": {
+      "@nomicfoundation/hardhat-toolbox": "^3.0.0",
+      "hardhat":                          "^2.19.0",
+      "dotenv":                           "^16.3.1"
+    }
+  }

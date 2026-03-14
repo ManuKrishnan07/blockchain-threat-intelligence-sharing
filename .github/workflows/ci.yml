@@ -1,0 +1,112 @@
+name: DTISP CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+
+  # ── Python Backend Tests ──────────────────────────────────
+  backend-tests:
+    name: 🐍 Backend Unit Tests
+    runs-on: ubuntu-latest
+
+    services:
+      mongodb:
+        image: mongo:7.0
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --eval \"db.adminCommand('ping')\""
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest pytest-asyncio httpx
+
+      - name: Run tests (no blockchain needed — mocked)
+        run: pytest tests/ -v --asyncio-mode=auto --tb=short
+        env:
+          MONGO_URI:    "mongodb://localhost:27017"
+          GANACHE_URL:  "http://localhost:7545"
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pytest-results
+          path: tests/
+
+  # ── Smart Contract Tests ──────────────────────────────────
+  contract-tests:
+    name: ⛓️ Smart Contract Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: hardhat/package.json
+
+      - name: Install Hardhat
+        run: |
+          cd hardhat
+          npm install
+
+      - name: Copy contract to hardhat
+        run: |
+          mkdir -p hardhat/contracts
+          cp smart_contract/ThreatIntelRegistry.sol hardhat/contracts/
+
+      - name: Compile contract
+        run: |
+          cd hardhat
+          npx hardhat compile
+
+      - name: Run Hardhat tests
+        run: |
+          cd hardhat
+          npx hardhat test
+
+  # ── Security Lint ────────────────────────────────────────
+  security-scan:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Bandit
+        run: pip install bandit
+
+      - name: Run Bandit security scan
+        run: bandit -r backend/ -ll --exclude backend/deploy.py
+        continue-on-error: true

@@ -1,0 +1,158 @@
+# Production Hardening Guide
+
+## Before Going to Production
+
+### 1. Environment Variables — Never hardcode secrets
+```bash
+# Generate a proper SECRET_KEY
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Set in `.env`:
+MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/dtisp
+GANACHE_URL=  # Replace with actual Ethereum RPC (Infura, Alchemy, or private node)
+SMTP_PASS=    # Use App Passwords, never your real password
+
+### 2. MongoDB Security
+- Enable authentication: `mongod --auth`
+- Create a dedicated database user with minimal permissions
+- Enable TLS: `mongod --tls --tlsCertificateKeyFile /path/to/cert.pem`
+- Never expose port 27017 publicly
+
+### 3. Ethereum Network
+For real deployments, switch from Ganache to:
+- **Sepolia testnet** (testing): Get ETH from faucet.sepolia.dev
+- **Polygon** (production, low gas): Cost-effective for high-volume submissions
+- **Private Quorum/Besu network**: Enterprise deployments
+
+Update `blockchain.py`:
+```python
+# For Infura (Sepolia)
+GANACHE_URL = "https://sepolia.infura.io/v3/YOUR_PROJECT_ID"
+w3 = Web3(Web3.HTTPProvider(GANACHE_URL))
+
+# For signing transactions (NOT Ganache's unlocked accounts)
+from eth_account import Account
+PRIVATE_KEY = os.getenv("ETH_PRIVATE_KEY")
+acct = Account.from_key(PRIVATE_KEY)
+w3.eth.default_account = acct.address
+```
+
+And use `build_transaction` + `sign_transaction` instead of `transact()`:
+```python
+tx = contract.functions.addThreatIndicator(...).build_transaction({
+    'from':     acct.address,
+    'nonce':    w3.eth.get_transaction_count(acct.address),
+    'gas':      200000,
+    'gasPrice': w3.eth.gas_price,
+})
+signed = w3.eth.account.sign_transaction(tx, PRIVATE_KEY)
+tx_hash = w3.eth.send_raw_transaction(signed.rawTransaction)
+```
+
+### 4. Rate Limiting — Tighten for Production
+```python
+# main.py — adjust these for your load profile
+@limiter.limit("5/minute")    # Submit: very strict
+@limiter.limit("100/minute")  # Read: generous
+```
+
+### 5. CORS — Restrict to Your Domain
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://yourdomain.com"],  # NOT "*"
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
+)
+```
+
+### 6. HTTPS — Mandatory
+Use Caddy as a reverse proxy (auto TLS):
+
+yourdomain.com {
+reverse_proxy backend:8000
+}
+
+### 7. MongoDB Indexes Already Created
+The `create_indexes()` call on startup handles this automatically.
+
+### 8. Monitoring — Add Prometheus Metrics
+```bash
+pip install prometheus-fastapi-instrumentator
+```
+```python
+from prometheus_fastapi_instrumentator import Instrumentator
+Instrumentator().instrument(app).expose(app)
+```
+Access metrics at: `http://localhost:8000/metrics`
+
+
+8. Quick Troubleshooting Reference
+PROBLEM                           CAUSE                         FIX
+─────────────────────────────────────────────────────────────────────────────────
+"Blockchain write failed"         Ganache not running           Start Ganache GUI or: npx ganache
+                                  Wrong port                    Check GANACHE_URL in .env
+                                  Contract not deployed         Run python deploy.py
+
+"contract_config.json not found"  deploy.py not run yet         cd backend && python deploy.py
+
+ConnectionRefusedError (MongoDB)  MongoDB not running           sudo systemctl start mongod
+
+422 Unprocessable Entity          Invalid input to API          Check field types/values match schema
+
+RateLimitExceeded (429)           Submitting too fast           Wait 60 seconds or adjust limit
+
+Web3 ValueError: contract revert  Duplicate hash on chain       That indicator is already submitted
+
+tests fail with import errors     Path not in sys.path          Run: pytest tests/ from project root
+
+Docker: port already in use       Another service on 7545/8000  Change host port in docker-compose.yml
+
+
+9. Complete File Reference
+DTISP/
+├── .env                                ← Environment variables (never commit)
+├── .github/
+│   └── workflows/
+│       └── ci.yml                      ← GitHub Actions CI pipeline
+├── backend/
+│   ├── __init__.py
+│   ├── main.py                         ← FastAPI app, all endpoints
+│   ├── blockchain.py                   ← Web3.py smart contract interaction
+│   ├── database.py                     ← Motor/MongoDB async client + indexes
+│   ├── hash_utils.py                   ← SHA256 hashing logic
+│   ├── models.py                       ← Pydantic models + validation
+│   ├── reputation.py                   ← Contributor scoring system
+│   ├── alerts.py                       ← Email alert on high severity IOCs
+│   ├── ioc_export.py                   ← STIX 2.1 bundle export
+│   ├── logger.py                       ← Structured logging + middleware
+│   ├── deploy.py                       ← Python contract compiler + deployer
+│   ├── seed_data.py                    ← Test data population script
+│   └── contract_config.json            ← Generated by deploy.py (gitignore)
+├── smart_contract/
+│   └── ThreatIntelRegistry.sol         ← Solidity smart contract
+├── hardhat/                            ← Optional Node.js Hardhat setup
+│   ├── contracts/ → (copy .sol here)
+│   ├── scripts/deploy.js
+│   ├── test/ThreatIntelRegistry.test.js
+│   ├── hardhat.config.js
+│   └── package.json
+├── frontend/
+│   ├── index.html                      ← Dashboard, submit, search, feed, leaderboard
+│   ├── style.css                       ← Dark theme UI
+│   └── app.js                          ← All frontend logic + WebSocket client
+├── tests/
+│   ├── conftest.py                     ← Shared fixtures and test data
+│   ├── test_hash_utils.py              ← Hash function unit tests
+│   ├── test_models.py                  ← Pydantic model validation tests
+│   ├── test_api.py                     ← Full API endpoint integration tests
+│   └── test_ioc_export.py              ← STIX export tests
+├── docker/
+│   ├── Dockerfile.backend
+│   ├── Dockerfile.frontend
+│   └── nginx.conf
+├── docker-compose.yml                  ← Full stack orchestration
+├── requirements.txt
+├── README.md
+└── PRODUCTION.md                       ← Production hardening guide

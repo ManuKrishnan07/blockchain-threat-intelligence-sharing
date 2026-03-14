@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>DTISP — Decentralized Threat Intel</title>
+    <link rel="stylesheet" href="style.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<nav>
+    <div class="nav-brand">🛡️ DTISP</div>
+    <ul>
+        <li onclick="showPage('dashboard')" class="active" id="nav-dashboard">Dashboard</li>
+        <li onclick="showPage('submit')"    id="nav-submit">Submit IOC</li>
+        <li onclick="showPage('search')"    id="nav-search">Search</li>
+        <li onclick="showPage('feed')"      id="nav-feed">Threat Feed</li>
+        <li onclick="showPage('leaderboard')" id="nav-leaderboard">Leaderboard</li>
+    </ul>
+</nav>
+
+<div class="wrapper">
+
+    <!-- ════ DASHBOARD ════ -->
+    <div id="page-dashboard" class="page active">
+        <h2>📊 Overview</h2>
+        <div class="stat-grid" id="stat-grid">
+            <div class="stat-card"><div class="stat-num" id="s-total">—</div><div class="stat-label">Total IOCs</div></div>
+            <div class="stat-card" style="border-color:#e74c3c"><div class="stat-num" id="s-critical">—</div><div class="stat-label">Critical</div></div>
+            <div class="stat-card" style="border-color:#e67e22"><div class="stat-num" id="s-high">—</div><div class="stat-label">High</div></div>
+            <div class="stat-card" style="border-color:#2ecc71"><div class="stat-num" id="s-7d">—</div><div class="stat-label">Last 7 Days</div></div>
+        </div>
+
+        <div class="chart-row">
+            <div class="chart-box">
+                <h3>Severity Breakdown</h3>
+                <canvas id="chart-severity"></canvas>
+            </div>
+            <div class="chart-box">
+                <h3>IOC Type Distribution</h3>
+                <canvas id="chart-types"></canvas>
+            </div>
+        </div>
+
+        <h3 style="margin-top:24px;">🕐 Recent Indicators</h3>
+        <div id="dash-recent"></div>
+    </div>
+
+    <!-- ════ SUBMIT ════ -->
+    <div id="page-submit" class="page">
+        <h2>📤 Submit Threat Indicator</h2>
+        <div class="form-card">
+            <form id="submitForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Indicator Type</label>
+                        <select id="f-type">
+                            <option value="ip">IP Address</option>
+                            <option value="domain">Phishing Domain</option>
+                            <option value="hash">Malware Hash</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Severity</label>
+                        <select id="f-severity">
+                            <option value="low">🟢 Low</option>
+                            <option value="medium">🟡 Medium</option>
+                            <option value="high">🟠 High</option>
+                            <option value="critical">🔴 Critical</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Indicator Value</label>
+                    <input type="text" id="f-value" placeholder="e.g. 185.23.45.10 or evil.ru or 3a5c..."/>
+                </div>
+                <div class="form-group">
+                    <label>Threat Category</label>
+                    <input type="text" id="f-category" placeholder="e.g. botnet, ransomware, phishing"/>
+                </div>
+                <div class="form-group">
+                    <label>Reporter ID</label>
+                    <input type="text" id="f-reporter" placeholder="e.g. org_alpha"/>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="f-desc" rows="3" placeholder="Provide context about this indicator..."></textarea>
+                </div>
+                <button type="submit" id="submit-btn">⛓️ Submit to Blockchain</button>
+            </form>
+            <div id="submit-result" class="result" style="display:none;"></div>
+        </div>
+    </div>
+
+    <!-- ════ SEARCH ════ -->
+    <div id="page-search" class="page">
+        <h2>🔍 Search Indicator</h2>
+        <div class="form-card">
+            <div class="search-row">
+                <input type="text" id="search-input" placeholder="Enter IP, domain, or file hash..."/>
+                <button onclick="searchIndicator()">Search</button>
+            </div>
+            <div id="search-result"></div>
+        </div>
+        <div class="form-card" style="margin-top:20px;">
+            <h3>✅ Verify Blockchain Integrity</h3>
+            <p class="hint">Paste a data_hash to confirm the record has not been tampered with.</p>
+            <div class="search-row">
+                <input type="text" id="verify-input" placeholder="Enter SHA256 data_hash..."/>
+                <button onclick="verifyIndicator()">Verify</button>
+            </div>
+            <div id="verify-result"></div>
+        </div>
+    </div>
+
+    <!-- ════ FEED ════ -->
+    <div id="page-feed" class="page">
+        <h2>📡 Live Threat Feed</h2>
+        <div class="filter-bar">
+            <select id="feed-severity">
+                <option value="">All Severities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+            </select>
+            <select id="feed-type">
+                <option value="">All Types</option>
+                <option value="ip">IP Address</option>
+                <option value="domain">Domain</option>
+                <option value="hash">File Hash</option>
+            </select>
+            <button onclick="loadFeed()">Apply Filters</button>
+            <button onclick="exportSTIX()" class="btn-secondary">⬇️ Export STIX</button>
+        </div>
+        <div id="feed-table-wrap">
+            <table id="feed-table">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Value</th>
+                        <th>Category</th>
+                        <th>Severity</th>
+                        <th>Reporter</th>
+                        <th>Hash (short)</th>
+                    </tr>
+                </thead>
+                <tbody id="feed-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ════ LEADERBOARD ════ -->
+    <div id="page-leaderboard" class="page">
+        <h2>🏆 Contributor Leaderboard</h2>
+        <div id="leaderboard-lookup" class="form-card" style="margin-bottom:20px;">
+            <div class="search-row">
+                <input type="text" id="reporter-input" placeholder="Enter reporter ID to view profile..."/>
+                <button onclick="lookupReporter()">Lookup</button>
+            </div>
+            <div id="reporter-result"></div>
+        </div>
+        <table id="leaderboard-table">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Reporter</th>
+                    <th>Submissions</th>
+                    <th>Verified</th>
+                    <th>Score</th>
+                </tr>
+            </thead>
+            <tbody id="leaderboard-body"></tbody>
+        </table>
+    </div>
+
+</div><!-- /wrapper -->
+
+<script src="app.js"></script>
+</body>
+</html>
